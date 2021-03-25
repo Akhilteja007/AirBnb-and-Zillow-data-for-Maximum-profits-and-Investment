@@ -1,0 +1,335 @@
+---
+title: "AirBnB & Zillow Data Challenge"
+---
+```{r}
+
+require(data.table)
+require(dplyr)
+require(ggplot2)
+require(tidyr)
+require(kableExtra)
+require(GGally)
+require(naniar)
+require(tidyverse)
+require(Rmisc)
+require(plotly)
+
+#require(R.utils)
+#require(mapboxapi)
+```
+
+
+
+```{r}
+#loading data #change the working directory here to upload your data
+
+airbnb <- read.csv("C:\\Users\\Mallikarjuna\\Desktop\\Data Challenge\\listings.csv")
+zillow <- read.csv("C:\\Users\\Mallikarjuna\\Desktop\\Data Challenge\\Zip_Zhvi_2bedroom.csv")
+
+```
+
+
+
+```{r}
+#checking the dimensions of data
+
+dim(airbnb)
+dim(zillow)
+```
+
+
+
+```{r}
+#replacing the words to have unique name for NY state and filtering airbnb data using state as NY and bedrooms as 2 
+
+airbnb$state <- (gsub("New York","NY",airbnb$state))
+airbnb$state <- (gsub("ny","NY",airbnb$state))
+airbnbfiltered <- airbnb[which(airbnb$state=="NY" & airbnb$bedrooms == 2),]
+zillowfiltered <- zillow[which(zillow$State =="NY"),]
+```
+
+
+
+```{r}
+#region name is zipcode in data dictionary so converting it to zipcode 
+colnames(zillowfiltered)[2] <- "zipcode"
+
+# convert zipcode to char in zillow to not lose data
+zillowfiltered$zipcode <- as.character(zillowfiltered$zipcode)
+airbnbfiltered$zipcode <- as.character(airbnbfiltered$zipcode)
+
+# merge two datasets by zipcode
+mergedata <- merge(airbnbfiltered, zillowfiltered , by = "zipcode" )
+
+```
+
+
+```{r}
+#To display names of columns and 10 rows of Merged data to decide important columns
+
+names(mergedata)
+
+kable(head(mergedata, 10)) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive")) %>% 
+  scroll_box(width = "100%", height = "500px")
+```
+
+
+```{r}
+#filtering out the important columns into new table
+mergedatafil <- mergedata
+mergedatafil <- mergedatafil[,c(1,39,41,42,49,50,60,61,65,67,68,69,83,87,367)]
+
+```
+
+
+
+```{r}
+#To display 10 rows of filtered columns
+
+kable(head(mergedatafil, 10)) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive")) %>% 
+  scroll_box(width = "100%", height = "500px")
+```
+
+
+
+```{r}
+#to display the percentage of data missing in each filtered column
+gg_miss_var(mergedatafil , show_pct = TRUE) + labs(y = "Percentage")
+```
+
+
+
+```{r}
+#to display dimentions and give more info of filtered columns
+dim(mergedatafil)
+summary(mergedatafil)
+```
+
+
+
+```{r}
+#preparing th price data to be ready for numeric calculations
+
+mergedatafilclean <- mergedatafil
+
+mergedatafilclean$price <- (gsub("\\$","",mergedatafilclean$price))
+mergedatafilclean$price <- (gsub("\\,","",mergedatafilclean$price))
+
+mergedatafilclean$cleaning_fee <- (gsub("\\$","",mergedatafilclean$cleaning_fee))
+mergedatafilclean$cleaning_fee <- (gsub("\\,","",mergedatafilclean$cleaning_fee))
+
+mergedatafilclean$extra_people <- (gsub("\\$","",mergedatafilclean$extra_people))
+mergedatafilclean$extra_people <- (gsub("\\,","",mergedatafilclean$extra_people))
+
+mergedatafilclean$cleaning_fee <- (gsub("\\.00","",mergedatafilclean$cleaning_fee))
+mergedatafilclean$extra_people <- (gsub("\\.00","",mergedatafilclean$extra_people))
+
+mergedatafilclean$price <- as.numeric(mergedatafilclean$price)
+mergedatafilclean$cleaning_fee <- as.numeric(mergedatafilclean$cleaning_fee)
+mergedatafilclean$extra_people <- as.numeric(mergedatafilclean$extra_people)
+
+```
+
+
+
+```{r}
+#filling the missing data with median if appropriate
+
+mergedatafilclean$cleaning_fee[is.na(mergedatafilclean$cleaning_fee)]<- median(mergedatafilclean$cleaning_fee , na.rm = TRUE)
+
+mergedatafilclean$extra_people[is.na(mergedatafilclean$extra_people)]<- median(mergedatafilclean$extra_people , na.rm = TRUE)
+
+mergedatafilclean$square_feet[mergedatafilclean$square_feet == 0] <- NA
+mergedatafilclean$square_feet[is.na(mergedatafilclean$square_feet)]<- median(mergedatafilclean$square_feet , na.rm = TRUE)
+
+```
+
+
+
+```{r}
+#displaying and removing the extreme values from price, cleaningfee and extrapeople 
+
+k = boxplot(mergedatafilclean$price, range = 4)
+
+extremes <- which(mergedatafilclean$price %in% k$out)
+
+mergedatafilclean <- mergedatafilclean[-c(extremes),]
+
+
+q = boxplot(mergedatafilclean$cleaning_fee, range = 4)
+
+extremes1 <- which(mergedatafilclean$cleaning_fee %in% q$out)
+
+mergedatafilclean <- mergedatafilclean[-c(extremes1),]
+
+
+j = boxplot(mergedatafilclean$extra_people, range = 4)
+
+extremes2 <- which(mergedatafilclean$extra_people %in% j$out)
+
+mergedatafilclean <- mergedatafilclean[-c(extremes2),]
+
+
+```
+
+
+
+```{r}
+#displaying the percentage of missing variables in the data before Analysis
+gg_miss_var(mergedatafilclean , show_pct = TRUE) + labs(y = "Percentage")
+```
+
+
+
+```{r}
+#creating total anuual income to show amount of money made on each property in an year
+
+mergedatafilclean$totalannualincome <- mergedatafilclean$price * (0.75 * 365) + mergedatafilclean$cleaning_fee * (0.40 * 365)+ mergedatafilclean$extra_people*(0.2 * 365)
+
+#creating price per square feet value column to display the value of each square feet in each locality
+
+mergedatafilclean$pricepersqrft<- mergedatafilclean$X2017.06/mergedatafilclean$square_feet
+
+#calculating the years it takes to break even the amount spent buying the property
+
+mergedatafilclean$Yearstostartprofiting <- mergedatafilclean$X2017.06/mergedatafilclean$totalannualincome
+
+#calculating the amount of made in 10 years by reducing the total revenue made in 10 years by the total spent on property
+
+mergedatafilclean$revenue_in_ten_years <-  -(mergedatafilclean$X2017.06) + (10 * ((mergedatafilclean$price * (0.75 * 365) )+(mergedatafilclean$cleaning_fee * (0.40 * 365))+ (mergedatafilclean$extra_people*(0.2 * 365))))
+
+#loading the revenue data to final data set for visualisations 
+
+FinalDataset <- mergedatafilclean
+
+#for viewing the final data set
+
+view(FinalDataset)
+
+#summary of final data set
+
+summary(FinalDataset)
+
+#To display final data
+
+kable(FinalDataset) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive")) %>% 
+  scroll_box(width = "100%", height = "500px")
+
+```
+
+
+
+```{r}
+#Analyzing Cost vs Revenue by Neighbourhood 
+
+options(scipen = '999')
+p1 <- ggplot(FinalDataset, 
+        aes(x=eval(parse(text='X2017.06')), 
+        fill=eval(parse(text='neighbourhood_group_cleansed')))) +
+  geom_histogram(alpha=0.7, position="identity", aes(y = ..density..), color="black") +
+  geom_density(alpha=0.7) +
+  geom_vline(aes(xintercept=mean(eval(parse(text='X2017.06'))))
+             , color="black", linetype="dashed", size=1) +
+  labs(x='House Price', y = "Density") +
+  guides(fill=guide_legend(title='Neighbourhood')) + 
+  scale_x_continuous(limits = c(0, 2000000))
+
+p2 <- ggplot(FinalDataset, 
+       aes(x=eval(parse(text='price')), 
+           fill=eval(parse(text='neighbourhood_group_cleansed')))) +
+  geom_histogram(alpha=0.7, position="identity", aes(y = ..density..), color="black") +
+  geom_density(alpha=0.7) +
+  geom_vline(aes(xintercept=mean(eval(parse(text='price'))))
+             , color="black", linetype="dashed", size=1) +
+  labs(x='Price Per Night', y = "Density") +
+  scale_x_continuous(limits = c(0, 1000)) +
+  guides(fill=guide_legend(title='Neighbourhood'))
+
+multiplot(p1, p2)
+```
+
+
+
+```{r}
+#visualizing breakeven time and number of properties for each zipcode 
+
+p3 <- ggplot(FinalDataset, aes(x = as.factor(zipcode), y = Yearstostartprofiting , fill = neighbourhood_group_cleansed)) + 
+  geom_boxplot() +
+  labs(x = "Zipcode", y = "Breakeven time") + 
+  scale_y_continuous(breaks=seq(0, 40, 5)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  guides(fill = guide_legend(title = "Neighbourhood")) +
+  labs(fill='Neighbourhood', y='Breakeven Time (years)') 
+
+p4 <-
+  ggplot(FinalDataset, aes(x=as.factor(zipcode))) +
+  geom_histogram(stat = "count", aes(fill = neighbourhood_group_cleansed)) +
+  geom_text(stat = "count", aes(label = ..count.., y = ..count.., vjust = -0.2)) +
+  labs(x = "Zipcode", y = "Total Listing", fill='Neighbourhood') + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(breaks = seq(0, 150, 25))
+
+multiplot(p3, p4)
+
+```
+
+
+
+```{r}
+#ploting and viewing top 10 properties that will breakeven 
+FinalDataset1 <- FinalDataset[order(FinalDataset$Yearstostartprofiting),]
+top_10 <- head(FinalDataset1, 10)
+view(top_10)
+
+
+plot_ly(y=top_10$zipcode, x=top_10$Yearstostartprofiting ,type="scatter", mode="markers+lines" , color=top_10$neighbourhood_group_cleansed, text = ~paste('Cumulative Income in shown years: ', top_10$totalannualincome*top_10$Yearstostartprofiting,
+                      '</br> neighbourhood: ', top_10$neighbourhood_cleansed,
+                      '</br> Number of reviews: ', top_10$number_of_reviews,
+                      '</br> Cost: ', top_10$X2017.06,
+                      '</br> review_scores_rating: ', top_10$review_scores_rating
+                      )
+)
+```
+
+
+
+```{r}
+#displaying top 10 properties that will breakeven 
+kable(top_10) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive")) %>% 
+  scroll_box(width = "100%", height = "500px")
+
+```
+
+
+
+```{r}
+#ploting and viewing top 10 properties that will generate highest revenue in 10 years
+FinalDataset2 <- FinalDataset[order(FinalDataset$revenue_in_ten_years),]
+top_10_r <- tail(FinalDataset2, 10)
+view(top_10_r)
+
+
+plot_ly(y=top_10_r$zipcode, x=top_10_r$revenue_in_ten_years ,type="scatter", mode="markers+lines" , color = top_10_r$neighbourhood_group_cleansed,
+        text = ~paste('Cumulative Income in shown years: ', top_10_r$totalannualincome*top_10_r$Yearstostartprofiting,
+                      '</br> Street: ', top_10_r$neighbourhood_cleansed,
+                      '</br> Number of reviews: ', top_10_r$number_of_reviews,
+                      '</br> Cost: ', top_10_r$X2017.06 ,
+                      '</br> review_scores_rating: ', top_10$review_scores_rating
+                      )
+)
+```
+
+
+
+```{r}
+#displaying top 10 properties that will generate highest revenue in 10 years
+kable(top_10_r) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive")) %>% 
+  scroll_box(width = "100%", height = "500px")
+```
+
+
